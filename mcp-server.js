@@ -46,6 +46,35 @@ function ensureMcpAcceptHeader(req) {
   if (!found) req.rawHeaders.push("Accept", desired);
 }
 
+// The SDK builds tool schemas with zod-to-json-schema, which stamps every one of them
+// with a draft-07 $schema. Our schemas only use keywords that mean the same thing in
+// draft-07 and 2020-12, but a host validating against 2020-12 dispatches on that
+// declaration, does not recognise draft-07, and rejects the entire tool list — so stop
+// claiming a dialect we never needed. Wrapping connect() covers stdio, HTTP and legacy
+// SSE at once, since every transport is reached through it.
+function dropSchemaDialect(server) {
+  const connect = server.connect.bind(server);
+  server.connect = (transport) => {
+    const send = transport.send.bind(transport);
+    transport.send = (message, options) => {
+      try {
+        const tools = message?.result?.tools;
+        if (Array.isArray(tools)) {
+          for (const tool of tools) {
+            if (tool?.inputSchema) delete tool.inputSchema.$schema;
+            if (tool?.outputSchema) delete tool.outputSchema.$schema;
+          }
+        }
+      } catch {
+        // Delivering the message matters more than dropping the dialect.
+      }
+      return send(message, options);
+    };
+    return connect(transport);
+  };
+  return server;
+}
+
 function createSpicyMonopolyServer() {
   const server = new McpServer({
     name: "spicy-monopoly",
@@ -55,7 +84,7 @@ function createSpicyMonopolyServer() {
     websiteUrl: "https://github.com/RennAkira/spicy-monopoly",
   });
   registerSpicyMonopoly(server);
-  return server;
+  return dropSchemaDialect(server);
 }
 
 function compact(value) {
