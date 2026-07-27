@@ -1018,19 +1018,23 @@ class Game:
         return p
 
     def board_art(self):
+        # ★格子用【全角】方括号 ［］ 不用半角 []:棋盘几乎总是被荷官贴进聊天窗口,
+        #   而半角 [x] 是 Markdown 的链接语法 → 渲染器把 [ 吃掉,20 格变成 🎯]🎯]🎯] 半拉子
+        #   (2026-07-28 玩家截图实证:20 格一格没少·只是每格开头的 [ 全没了)。
+        #   全角括号不是 Markdown 语法,渲染器不碰;纯显示字符,不影响任何判定。手牌/背包同理。
         c1, c2 = self.color[self.p1], self.color[self.p2]
-        line = "".join("[" + (c1 if self.pos[self.p1] == i else "") + (c2 if self.pos[self.p2] == i else "") +
-                       TILE_EMOJI[self.TILES[i]] + "]" for i in range(20))
+        line = "".join("［" + (c1 if self.pos[self.p1] == i else "") + (c2 if self.pos[self.p2] == i else "") +
+                       TILE_EMOJI[self.TILES[i]] + "］" for i in range(20))
         id1 = self.identity.get(self.p1, {}).get("name", "无")
         id2 = self.identity.get(self.p2, {}).get("name", "无")
         hand1 = ",".join(c["name"] for c in self.hand[self.p1]) if self.hand[self.p1] else "空"
         hand2 = ",".join(c["name"] for c in self.hand[self.p2]) if self.hand[self.p2] else "空"
-        bag1 = f" · 🎒[{','.join(self.items[self.p1]) or '空'}]" if COLLECTIBLES_ENABLED else ""
-        bag2 = f" · 🎒[{','.join(self.items[self.p2]) or '空'}]" if COLLECTIBLES_ENABLED else ""
+        bag1 = f" · 🎒［{','.join(self.items[self.p1]) or '空'}］" if COLLECTIBLES_ENABLED else ""
+        bag2 = f" · 🎒［{','.join(self.items[self.p2]) or '空'}］" if COLLECTIBLES_ENABLED else ""
         prog = f"　〔回合 {self.turn_count}/{self.total_rounds}〕"
         return (line + prog +
-                f"\n{c1}{self.p1}@{self.pos[self.p1]}(第{self.lap[self.p1]+1}圈) · 💰{self.coins[self.p1]}{bag1} · 🃏[{hand1}] · 身份:{id1}"
-                f"\n{c2}{self.p2}@{self.pos[self.p2]}(第{self.lap[self.p2]+1}圈) · 💰{self.coins[self.p2]}{bag2} · 🃏[{hand2}] · 身份:{id2}")
+                f"\n{c1}{self.p1}@{self.pos[self.p1]}(第{self.lap[self.p1]+1}圈) · 💰{self.coins[self.p1]}{bag1} · 🃏［{hand1}］ · 身份:{id1}"
+                f"\n{c2}{self.p2}@{self.pos[self.p2]}(第{self.lap[self.p2]+1}圈) · 💰{self.coins[self.p2]}{bag2} · 🃏［{hand2}］ · 身份:{id2}")
 
     def roll(self, dice=None, guess=None, swap_identity=False):
         who = self.turn

@@ -484,6 +484,7 @@ const hostRules = [
   "Never start from a bare new_game call. First call monopoly_help, learn the MCP host rules, explain setup/safety to players, then pass setup_confirmed=true and the current rules_ack.",
   "Use the API engine as source of truth: never invent dice, tasks, coins, winners, hidden mark spots, identities, or board state.",
   "You are the host and may roleplay your side, but tool results decide game mechanics. Keep the board visible to players.",
+  "Paste the board verbatim, exactly as the tool returned it. Never redraw it as your own table or ASCII art: re-typing 20 tiles, both positions, coins and hands from memory gets them wrong, and a wrong board is worse than none.",
   "Every new game needs setup confirmation. A remembered rules_ack only proves you know the rules; setup_confirmed means this specific game was explained and confirmed.",
   "Keep the game_id: announce it to players once right after new_game (e.g. 局号 xxxxxxxx) so it stays in the visible chat. If you ever lose it, do NOT open a new game — recover it via game_info query=pair_history (returns last_game_id).",
 ];
@@ -503,7 +504,7 @@ const safetyRules = [
 const turnLoop = [
   "Call roll with game_id only; never pass a player name to roll.",
   "Lost the game_id? Never restart via new_game: call game_info query=pair_history with both names and sexes — it returns last_game_id of the unfinished game; continue with roll on that id.",
-  "Show the full board every turn unless players explicitly say not to.",
+  "Show the full board every turn unless players explicitly say not to. Copy the board string verbatim into your visible reply — do not summarise it, do not redraw it, do not rebuild it as a markdown table. It is already formatted and markdown-safe.",
   "Read say/hint/task/truth/toll/duel/card/mystery to players and follow action_needed.",
   "Toll tile: settle it the moment the player decides — action='pay_toll' (they pay) or action='serve_toll' (they did the landlord's task instead, no coins charged). Do NOT carry that decision to the next roll: if you forget the toll arg there, it silently defaults to pay and takes their coins even though they served.",
   "Do not rush. Present the task in full first, then wait for players to actually do it and say continue/next/ready before the next roll.",
@@ -561,7 +562,7 @@ const newGameHostGuide = [
   "For active identities, follow identity_action_map from monopoly_help; some events happen in conversation and must be reported with game_action.",
   "For feature cards, follow card_rules from monopoly_help; buy/use/discard are all game_action calls.",
   "If history_note says this pair played before and players say that is wrong, stop before rolling. Ask for a unique pair_code or names, then start a new game with that pair_code.",
-  "Every turn: call roll(game_id), paste board, read the task IN FULL and follow hint/action_needed, then wait for players to actually do it before rolling again — choosing 'do the task' is the start, not completion; do not fast-forward the human's task by rolling right after they agree.",
+  "Every turn: call roll(game_id), paste board verbatim (copy it as-is; never redraw it yourself), read the task IN FULL and follow hint/action_needed, then wait for players to actually do it before rolling again — choosing 'do the task' is the start, not completion; do not fast-forward the human's task by rolling right after they agree.",
   "If anyone refuses/stops/says redline/404, use skip or stop immediately; do not argue.",
   "Never invent hidden state. On errors, show the parameter error and retry with corrected args.",
 ];
@@ -582,7 +583,7 @@ const rollDescription = [
   "Optional settlement args only when the previous result asked for them: task=done/skip, toll=pay/serve, super_action=done/buyout, duel_winner=exact player name, guess=大/小, swap_identity=true/false.",
   "For toll, prefer settling on the spot via game_action pay_toll/serve_toll. A forgotten toll arg here defaults to pay and charges a player who actually did the landlord's task.",
   "Read the previous task IN FULL and wait for players to actually do it before rolling again. A human choosing 'do the task' (over paying) is the START, not completion — do not settle or roll just because they agreed; rolling settles the previous task as done.",
-  "Call roll once per turn and show the returned board to players.",
+  "Call roll once per turn and paste the returned board into your visible reply, copied verbatim. The board is already formatted and markdown-safe — never redraw it, summarise it, or rebuild it as your own table.",
   "Tie only: when final_result reports a tie and players want to break it, roll with tiebreak=true (adds one more round each, then rolls). Still tied after? pass tiebreak=true again. Otherwise let each side do a final command and keep the tie.",
   "If you no longer know the game_id, do not start a new game — recover it with game_info query=pair_history (returns last_game_id).",
 ].join(" ");
@@ -976,7 +977,7 @@ server.registerPrompt("start_spicy_monopoly", {
         "Before new_game, explain the coin/territory win condition, role reversal, safety word 404, skip/swap options, and ask setup/redlines.",
         "Call new_game only after setup is confirmed, with setup_confirmed=true and the rules_ack returned by monopoly_help.",
         "After new_game, read active_limits, intensity_note, history_note, identity_reminder, and board back to the players before the first roll.",
-        "For each turn, call roll(game_id only), show board, read the task in full and follow hint/action_needed, then wait for players to actually do it before rolling again. Choosing 'do the task' is the start, not completion — do not roll (which settles it) just because they agreed; the human's task especially needs real space.",
+        "For each turn, call roll(game_id only), paste board verbatim (copy as-is, never redraw it), read the task in full and follow hint/action_needed, then wait for players to actually do it before rolling again. Choosing 'do the task' is the start, not completion — do not roll (which settles it) just because they agreed; the human's task especially needs real space.",
         "On a final_result tie, players may break it with roll tiebreak=true (one more round each), or accept the tie with a final command from each side.",
         "If a player says stop, redline, 404, or does not want a task, call game_action with action='skip' immediately without asking them to justify it.",
         player_names ? `Player/setup notes: ${player_names}` : "",

@@ -187,7 +187,7 @@ MCP 菜单刻意压到 6 个工具，避免客户端每轮都把一大串细碎�
 ## 给 AI 的一句话
 
 ```text
-请用 spicy-monopoly MCP 工具运行游戏。先调用 monopoly_help，按里面的 host_rules/setup_questions/safety_rules/turn_loop/identity_action_map/card_rules 开局，并记下 rules_ack；如果客户端能读 resource，请先读 spicy-monopoly://manual/mcp-host。不要自己编骰子、任务、金币、赢家或隐藏位置。开局前先向玩家说明金币/地盘胜负、攻受反转、安全词 404、skip/swap，再问强度、红线、后庭、身份、回合数等参数。默认名/常见名先查 pair_history，撞名就问 pair_code。只有说明并确认后，new_game 才能带 setup_confirmed=true 和 rules_ack；如果工具返回 setup_required，就按 checklist 先问玩家，不要硬开。new_game 后把 active_limits/history_note/status/identity_reminder/board 念给玩家；之后每轮 roll 只传 game_id 不传玩家名，展示 board，并严格按 hint/action_needed 继续。跳过/换卡/身份主动技/终局等都用 game_action。如果工具返回 ok:false 或参数错误，按错误提示修正后重新调用。
+请用 spicy-monopoly MCP 工具运行游戏。先调用 monopoly_help，按里面的 host_rules/setup_questions/safety_rules/turn_loop/identity_action_map/card_rules 开局，并记下 rules_ack；如果客户端能读 resource，请先读 spicy-monopoly://manual/mcp-host。不要自己编骰子、任务、金币、赢家或隐藏位置。开局前先向玩家说明金币/地盘胜负、攻受反转、安全词 404、skip/swap，再问强度、红线、后庭、身份、回合数等参数。默认名/常见名先查 pair_history，撞名就问 pair_code。只有说明并确认后，new_game 才能带 setup_confirmed=true 和 rules_ack；如果工具返回 setup_required，就按 checklist 先问玩家，不要硬开。new_game 后把 active_limits/history_note/status/identity_reminder/board 念给玩家；之后每轮 roll 只传 game_id 不传玩家名，把 board 原样贴出来（照抄，别自己重画成表格或 ASCII 棋盘——它已排好版），并严格按 hint/action_needed 继续。跳过/换卡/身份主动技/终局等都用 game_action。如果工具返回 ok:false 或参数错误，按错误提示修正后重新调用。
 ```
 
 ## 注意
