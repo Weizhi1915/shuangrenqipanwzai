@@ -421,7 +421,9 @@ def roll(game_id: str, body: Optional[RollRequest] = None):
         hint = (f"踩进对方地盘(过路费{r['toll']['fee']}币已挂账)·两条路:①交钱 POST /pay_toll/{game_id}/{who} "
                 f"②做地主那道差遣抵掉(不扣钱)→ ★做完当场调 POST /serve_toll/{game_id}/{who} 把账结掉,"
                 f"别等到下一轮再补 body {{\"toll\":\"serve\"}}——隔着一整段演出很容易忘,一忘下一轮就默认按①把钱扣了。"
-                f"★选『做差遣』是要真把地主那道做/演完再结·别人一说做就秒结算跳过")
+                f"★选『做差遣』是要真把地主那道做/演完再结·别人一说做就秒结算跳过。"
+                f"★★钱已经被扣了才发现搞错(你按了①、或忘带参数被默认扣的)→ 再调一次 "
+                f"POST /serve_toll/{game_id}/{who} 就能【改判退钱】,别回一句『已经扣了』把玩家晾着")
     elif t and "buyout" in t:
         action_needed = "super"
         hint = "超级任务:玩完下一轮 /roll 自动结算(+5币)·不想做下一轮 body 带 {\"super_action\":\"buyout\"}(花8币)·★选『做』是要真做/演完再掷·别人一说做就秒结算跳过"
@@ -495,7 +497,20 @@ def serve_toll(game_id: str, who: str):
     g = _load(game_id)
     pt = g.pending_toll
     if not pt:
-        raise HTTPException(400, f"现在没有悬着的过路费(踩进对方地盘那一轮才会挂账)·{who} 不用结这笔。")
+        # ★账已经按「交钱」结掉了,这会儿才说做的是差遣 = 改判 → 把钱退回去。
+        #   旧版在这里只回一句「现在没有悬着的过路费」就把人晾着,钱要不回来
+        #   (线上 25 次 400;局 589da166 荷官连按两次改判都被顶回来)——那正是玩家报的
+        #   「做了任务还是被扣钱」。判据用留底 last_toll_paid,不猜。
+        lt = getattr(g, "last_toll_paid", None)
+        if lt and lt.get("who") == who:
+            result = g.undo_last_toll_payment()
+            _save(game_id, g)
+            return {"result": result, "board": g.board_art(), "coins": dict(g.coins)}
+        if lt:
+            raise HTTPException(400, f"刚结掉的那笔过路费是 {lt['who']} 的,不是 {who} 的"
+                                     f"——想改判成差遣就按 who={lt['who']} 再调一次。")
+        raise HTTPException(400, f"现在没有悬着的过路费、也没有刚交掉可以改判的("
+                                 f"踩进对方地盘那一轮才会挂账)·{who} 不用结这笔。")
     if pt["who"] != who:
         raise HTTPException(400, f"这笔过路费是 {pt['who']} 欠 {pt['landlord']} 的,不是 {who} 的"
                                  f"——按 who={pt['who']} 再调一次。")

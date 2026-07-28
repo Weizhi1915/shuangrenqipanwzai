@@ -316,6 +316,7 @@ class Game:
         self._recent_kinks = []   # 最近抽过的 kink(治「同一个 act 反复来」:如一局 3 次口交)
         self.pending_task = {}    # 谁踩了任务格、待结算的那张卡(做完按强度给币)
         self.pending_toll = None  # 悬着的过路费账单{who,landlord,fee}:下轮roll开头默认自动交(账不许糊)
+        self.last_toll_paid = None  # 最近一笔【按交钱结掉】的过路费留底:荷官按错了能改判成差遣退钱(undo_last_toll_payment)
         self.pending_duel = None  # 悬着的对决{stake}:下轮roll前必须报赢家,赌注不许蒸发
         self.owner = {}           # 地盘:格号 → 占领者名字(做完任务白占)
         self.double_next = {}     # 加速卡:谁下一轮再掷一次
@@ -1373,26 +1374,73 @@ class Game:
 
     def pay_toll(self, who=None, fee=None):
         # 踩进对方地盘:交过路费免差遣;钱不够 → 只能听凭差遣(用身体抵=破产后果天然做进去)。
+        # ★★账单(pending_toll)是唯一真相源——「交过路费」= 结掉【挂着的那一笔】,
+        #   不是「看你现在站在谁的地盘上就收钱」。旧写法只看站位不看账单,两个真金白银的洞
+        #   (2026-07-28 玩家反馈「做了任务还是被扣钱」·两个都在引擎里复现过):
+        #     ① 已经用差遣抵掉的账,再调一次 pay_toll 又收一次钱(pending_toll 早是 None 它也不看);
+        #     ② 压根没挂账时调它照样凭空扣 3 币。
+        #   收口成「有账单才收钱、按账单金额收」= 跟 buyout 07-19 修完后同一个形状(先查悬账·没有就拒绝且不扣钱)。
         who = who or self.turn
-        pos = self.pos[who]
-        landlord = self.owner.get(pos)
-        if not landlord or landlord == who:
-            return f"❌ 第{pos}格不是别人的地盘,不用交过路费"
-        if self._id_effect_val(landlord, "toll_serve_only", False):   # 🍯蜜罐:不收钱·只能差遣
+        if who not in self.coins:   # ★校验 who:旧版直接 self.pos[who] → KeyError → API 500 还漏代码栈(线上真出过2次)
+            return f"❌ 这局没有叫「{who}」的玩家,只有 {self.p1} 和 {self.p2}"
+        pt = self.pending_toll
+        if not pt:
+            return (f"❌ 现在没有悬着的过路费,{who} 不欠钱——别凭空扣。"
+                    f"(踩进对方地盘那一轮才会挂账;这笔要是刚才已经结过了,别再结第二遍)")
+        if pt["who"] != who:
+            return (f"❌ 这笔过路费是 {pt['who']} 欠 {pt['landlord']} 的,不是 {who} 的"
+                    f"——按 who={pt['who']} 再调一次")
+        landlord = pt["landlord"]
+        if pt.get("serve_only"):   # 🍯蜜罐:不收钱·只能差遣
             return f"🍯 {landlord} 是蜜罐·地盘不收钱,只能听凭差遣(做地主那道·g.settle_pending_toll('serve'))"
         if fee is None:
-            fee = 3 + (self._id_effect_val(landlord, "toll_plus", 0) or 0)   # 👑暴君:领土费 +1
+            fee = pt["fee"]        # ★按账单上的金额,别重算——重算会跟挂账那一刻漂移(👑暴君 toll_plus 中途换身份就对不上账)
         if self.coins[who] < fee:
             return f"❌ {who} 钱不够过路费({self.coins[who]}/{fee}) → 只能听凭 {landlord} 差遣(用身体抵)"
         self.coins[who] -= fee; self.coins[landlord] += fee
         self.pending_toll = None   # 账清了
+        self._remember_paid_toll(who, landlord, fee)   # 记一笔·万一是荷官按错了还能改判成差遣(见 undo_last_toll_payment)
         return f"💰 {who} 交 {fee} 币过路费给 {landlord}(免差遣),剩{self.coins[who]}币"
+
+    def _remember_paid_toll(self, who, landlord, fee):
+        """记住「刚刚按交钱结掉的那一笔过路费」,好让荷官事后改判成差遣时能把钱退回去。
+        只留最近一笔(下一笔结算就顶掉);做过差遣/改判过的直接清空=没有可退的。"""
+        self.last_toll_paid = {"who": who, "landlord": landlord, "fee": fee, "turn": self.turn_count}
+
+    def undo_last_toll_payment(self):
+        """★把「刚才按交钱结掉的那笔过路费」改判成差遣(退钱)。返回文案;没有可退的返回 None。
+        ★为什么要这个:过路费一旦结掉,账就没了——荷官先按了『交钱』、玩家才喊「我明明做了他的差遣」时,
+          `settle_pending_toll('serve')` 找不到那张单子,只会回一句「你没欠账」,**钱要不回来**
+          (线上 25 次 serve_toll 400 就是这个;局 589da166 里荷官连按两次改判都被顶回来)。
+          根在「结掉的账没有留底、改判无处可施」,不在荷官手快——所以补的是退款能力,不是提示词。
+          仓库里早有同款先例:swap/skip 的「同回合反悔」也是靠 last_settle 留底回滚(_revert_last_settle)。"""
+        lt = getattr(self, "last_toll_paid", None)
+        if not lt:
+            return None
+        self.last_toll_paid = None
+        who, landlord, fee = lt["who"], lt["landlord"], lt["fee"]
+        self.coins[who] += fee
+        # 地主那 3 币早收进兜里,理论上可能已经花掉(买卡/买断)→ 夹到 0 别扣成负数,
+        # 但被冤枉扣钱的那个人照数退回(他才是被害的那个)。真夹到了就如实说一声,别偷偷抹平。
+        short = max(0, fee - self.coins[landlord])
+        self.coins[landlord] = max(0, self.coins[landlord] - fee)
+        sb = self._id_effect_val(who, "serve_bonus", 0) or 0   # 改判成差遣=结果要跟「当时就选差遣」一致(奴隶被使唤照样挣)
+        if sb:
+            self.coins[who] += sb
+        msg = (f"↩️ 改判:{who} 那 {fee} 币过路费退回来了(他做的是 {landlord} 的差遣·不该扣钱),"
+               f"现在 {who} {self.coins[who]}币 · {landlord} {self.coins[landlord]}币")
+        if sb:
+            msg += f" · ⛓️奴隶被使唤 +{sb}币"
+        if short:
+            msg += f"(注:{landlord} 手头只剩得下 {fee - short} 币可退,差的 {short} 币是他已经花掉的)"
+        return msg
 
     def settle_pending_toll(self, mode="pay"):
         # 结算悬着的过路费(lazy·roll开头调):mode="pay"交钱 / "serve"差遣抵扣(做了地主那道,不扣钱)。
         # 没钱的 pay 自动降级成 serve——用身体抵,规则本来就这么写的。
         if not self.pending_toll:
-            return None
+            # 账已经结掉了。若这会儿才说「其实做的是差遣」→ 把刚才那笔交钱改判回来(退钱),别让玩家白挨扣。
+            return self.undo_last_toll_payment() if mode == "serve" else None
         pt, self.pending_toll = self.pending_toll, None
         who, landlord, fee = pt["who"], pt["landlord"], pt["fee"]
         # 蜜罐地盘不收钱 / 玩家选差遣抵扣 / 没钱 → 都走差遣;奴隶(serve_bonus)被使唤也能挣钱
@@ -1403,12 +1451,14 @@ class Game:
                 why = "钱不够·用身体抵"
             else:
                 why = "用身体抵了过路费"
+            self.last_toll_paid = None        # 这笔本来就没收钱=没有可退的,别让上一笔的留底串到这儿
             sb = self._id_effect_val(who, "serve_bonus", 0) or 0
             if sb:
                 self.coins[who] += sb
                 return f"🩺 {who} 做了 {landlord} 的差遣({why}·不扣钱)· ⛓️奴隶被使唤 +{sb}币"
             return f"🩺 {who} 做了 {landlord} 的差遣({why}·不扣钱)"
         self.coins[who] -= fee; self.coins[landlord] += fee
+        self._remember_paid_toll(who, landlord, fee)   # 留底·荷官事后改判成差遣时能退
         return f"💰 {who} 补交 {fee} 币过路费给 {landlord},剩{self.coins[who]}币"
 
     def settle_prev_round(self, toll="pay", task="done", super_action="done", duel_winner=None):
@@ -1643,6 +1693,7 @@ class Game:
                  "last_settle": self.last_settle,
                  "identity_since": self.identity_since, "chance_swap_offer": self._chance_swap_offer,
                  "pending_toll": self.pending_toll,
+                 "last_toll_paid": self.last_toll_paid,   # 留底也要存档:API 无状态·不存=下一个请求就忘了、改判退不了钱
                  "pending_duel": self.pending_duel,
                  "owner": self.owner,
                  "double_next": self.double_next,
@@ -1689,6 +1740,7 @@ class Game:
         g._rev_acc = s.get("rev_acc", g._rev_acc)   # 发牌式反转累加器(旧档没有=保留__init__的随机相位·别回0)
         g.pending_task = s.get("pending_task", {})
         g.pending_toll = s.get("pending_toll")
+        g.last_toll_paid = s.get("last_toll_paid")   # 旧档没这个字段=None·back-compat(老局改判不了但不会崩)
         g.pending_duel = s.get("pending_duel")
         g.owner = {int(k): v for k, v in s.get("owner", {}).items()}   # json 把 int 键存成 str,读回还原
         g.double_next = s.get("double_next", {})

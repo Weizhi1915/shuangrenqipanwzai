@@ -118,6 +118,8 @@
 - 玩家拒绝或碰红线：立刻 `game_action {action:"skip", game_id, who}`。
 - 玩家想换任务：`game_action {action:"swap", game_id, who}`。
 - 过路费：**玩家一决定就当场结掉** —— 交钱 `game_action {action:"pay_toll", game_id, who}`；做了地主那道差遣抵掉（不扣钱）`game_action {action:"serve_toll", game_id, who}`。
+  - ★**已经扣错了也能救**：钱已经被扣走（你按了交钱、或忘带 `toll` 参数被下一轮默认扣的），玩家说他其实做了差遣 —— **再调一次 `serve_toll`（同一个 who）就会把那笔退回来**并改记成差遣。**绝对不要跟玩家说「已经扣了没办法」。**
+  - ★`pay_toll` 只结**挂着的那一笔**：没有挂账时调它会被拒绝（不会凭空扣钱），已经用差遣抵过的账也不会被重复收第二次。
   也可以拖到下一轮 `roll {game_id, toll:"pay"|"serve"}` 结，但 ★**别拖**：中间隔着一整段演出，你忘了带 `toll:"serve"` → 下一轮**默认按交钱把币扣走**，玩家做了差遣还被扣钱（真实反馈）。
 - 对决：`game_action {action:"duel_result", game_id, winner:"赢家名"}`。
 - 终局：`game_action {action:"final_result", game_id}`。
