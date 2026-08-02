@@ -26,6 +26,11 @@ const MCP_ALLOWED_HOSTS = (process.env.SPICY_MONOPOLY_MCP_ALLOWED_HOSTS || "")
   .split(",")
   .map((host) => host.trim())
   .filter(Boolean);
+// A legacy SSE stream says nothing after the endpoint event, so any proxy in front of us
+// reads it as a dead connection and cuts it. Cloudflare does this at ~100s, which was
+// knocking every hosted player off mid-session. Comment frames keep bytes moving; SSE
+// clients drop them on the floor, so this costs a player nothing.
+const MCP_SSE_KEEPALIVE_MS = Number.parseInt(process.env.SPICY_MONOPOLY_MCP_SSE_KEEPALIVE_MS || "25000", 10);
 const MCP_RULES_ACK = "mcp-host-v2026-07-06";
 
 function ensureMcpAcceptHeader(req) {
@@ -1071,11 +1076,30 @@ async function runHttp() {
   async function handleLegacySse(_req, res) {
     const transport = new SSEServerTransport("/messages", res);
     sseTransports.set(transport.sessionId, transport);
+
+    let keepAlive = null;
     res.on("close", () => {
+      if (keepAlive) clearInterval(keepAlive);
       sseTransports.delete(transport.sessionId);
     });
+
     const server = createSpicyMonopolyServer();
     await server.connect(transport);
+
+    if (MCP_SSE_KEEPALIVE_MS > 0) {
+      keepAlive = setInterval(() => {
+        if (res.writableEnded || res.destroyed) return;
+        // Take the callback form: a client that hangs up between the check above and this
+        // write lands in the callback instead of emitting an unhandled 'error' on the
+        // response, which would take the whole server down with it.
+        try {
+          res.write(": keepalive\n\n", () => {});
+        } catch {
+          clearInterval(keepAlive);
+        }
+      }, MCP_SSE_KEEPALIVE_MS);
+      keepAlive.unref();
+    }
   }
 
   app.get(MCP_PATH, async (req, res) => {
