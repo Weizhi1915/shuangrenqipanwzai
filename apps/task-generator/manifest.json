@@ -1,0 +1,14 @@
+{
+  "name": "随机任务生成器",
+  "version": "1.1.0",
+  "description": "自动同步仓库任务库，支持随机抽取与 AI 剧情加工。",
+  "permissions": [
+    "app.data.read",
+    "app.data.write",
+    "ai.generate",
+    "ui.toast",
+    "characters.read",
+    "network.fetch"
+  ],
+  "entry": "index.html"
+}

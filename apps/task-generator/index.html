@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>任务生成器 v2</title>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+  <style>
+    :root {
+      --primary: #6366f1;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #1e293b;
+      --text-muted: #64748b;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      padding-bottom: var(--ai-phone-app-safe-bottom, 24px);
+    }
+
+    .app-container {
+      padding: 16px;
+      padding-top: calc(var(--ai-phone-app-bar-top, 56px) + 50px);
+    }
+
+    .top-bar {
+      position: fixed;
+      top: var(--ai-phone-app-bar-top, 56px);
+      left: 16px;
+      right: var(--ai-phone-app-bar-clear-right, 96px);
+      height: 44px;
+      display: flex;
+      align-items: center;
+      font-weight: bold;
+      font-size: 18px;
+      z-index: 100;
+    }
+
+    .import-section {
+      background: var(--card);
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+
+    .file-input-label {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      background: #eff6ff;
+      border: 2px dashed #3b82f6;
+      border-radius: 8px;
+      text-align: center;
+      color: #2563eb;
+      font-weight: 500;
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+
+    #fileInput { display: none; }
+
+    .stats {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    
+    .manage-btn {
+      display: block;
+      margin: 0 auto;
+      background: none;
+      border: 1px solid #cbd5e1;
+      color: #64748b;
+      padding: 4px 12px;
+      border-radius: 15px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    /* 管理视图样式 */
+    #manageView {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: white;
+      z-index: 500;
+      flex-direction: column;
+    }
+    
+    .manage-header {
+      padding: 16px;
+      padding-top: var(--ai-phone-app-safe-top, 44px);
+      border-bottom: 1px solid #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .manage-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+    
+    .manage-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px;
+      border-bottom: 1px solid #f8fafc;
+    }
+    
+    .manage-item input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      margin-top: 2px;
+    }
+    
+    .manage-item-text {
+      font-size: 14px;
+      line-height: 1.4;
+      flex: 1;
+    }
+    
+    .manage-footer {
+      padding: 16px;
+      border-top: 1px solid #f1f5f9;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      background: #fafafa;
+    }
+    .manage-footer .btn {
+      flex: 1 1 45%;
+    }
+
+    .task-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .task-card {
+      background: var(--card);
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      border-left: 4px solid var(--primary);
+    }
+
+    .intensity-tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      background: #fee2e2;
+      color: #b91c1c;
+      margin-bottom: 8px;
+      font-weight: bold;
+    }
+
+    .task-content {
+      font-size: 15px;
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+
+    .task-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      flex: 1;
+      border: none;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.2s;
+    }
+
+    .btn:active { opacity: 0.7; }
+    .btn-copy { background: #f1f5f9; color: #475569; }
+    .btn-ai { background: var(--primary); color: white; }
+    .btn-main {
+      width: 100%;
+      padding: 14px;
+      background: var(--primary);
+      color: white;
+      font-size: 16px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(255,255,255,0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      flex-direction: column;
+      gap: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="top-bar">任务生成器 v2</div>
+
+  <div class="app-container">
+    <div class="import-section">
+      <label class="file-input-label" for="fileInput">
+        导入本地任务文件 (TXT/JSON/DOCX)
+      </label>
+      <input type="file" id="fileInput" accept=".txt,.json,.docx">
+      <div id="taskCount" class="stats">正在初始化...</div>
+      <button class="manage-btn" onclick="toggleManageView(true)">管理任务库 / 清除</button>
+    </div>
+
+    <!-- 管理视图 -->
+    <div id="manageView">
+      <div class="manage-header">
+        <button class="btn btn-copy" style="flex:none; width:60px;" onclick="toggleManageView(false)">返回</button>
+        <div style="font-weight:bold; flex:1; text-align:center;">管理任务库</div>
+        <div style="width:60px;"></div>
+      </div>
+      <div id="manageList" class="manage-list"></div>
+      <div class="manage-footer">
+        <button class="btn btn-copy" onclick="selectAll(true)">全选</button>
+        <button class="btn btn-copy" onclick="selectAll(false)">取消</button>
+        <button class="btn btn-copy" style="background:#10b981; color:white;" onclick="exportSelected('txt')">导出 TXT</button>
+        <button class="btn btn-copy" style="background:#10b981; color:white;" onclick="exportSelected('json')">导出 JSON</button>
+        <button class="btn" style="background:#ef4444; color:white; flex:1 1 100% !important;" onclick="deleteSelected()">删除选中任务</button>
+      </div>
+    </div>
+
+    <button class="btn btn-main" onclick="generateTasks()">随机抽取 12 条任务</button>
+
+    <div id="taskList" class="task-list">
+      <!-- 任务卡片 -->
+    </div>
+  </div>
+
+  <div id="loading" class="loading-overlay">
+    <div style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+    <span>AI 加工中...</span>
+  </div>
+
+  <style> @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } </style>
+
+  <script>
+    let allTasks = [];
+    const api = window.AiPhone;
+
+    async function init() {
+      const statsEl = document.getElementById('taskCount');
+      try {
+        // 直接请求 10000 条上限，绕过目前可能不稳定的 offset 分页逻辑
+        const batch = await api.db.list("tasks_v2", { limit: 10000 });
+        
+        if (batch && batch.length > 0) {
+          allTasks = batch.map(i => ({ id: i.id, ...i.data }));
+          updateStats();
+        } else {
+          allTasks = [];
+          statsEl.innerText = "库中暂无任务，请点击上方导入";
+        }
+      } catch (e) {
+        console.error("加载失败:", e);
+        statsEl.innerText = "加载失败: " + e.message;
+      }
+    }
+
+    function updateStats() {
+      document.getElementById('taskCount').innerText = `当前库中有 ${allTasks.length} 条任务`;
+    }
+
+    // 文件解析逻辑
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      try {
+        let items = [];
+        const name = file.name.toLowerCase();
+        
+        if (name.endsWith('.json')) {
+          const raw = await file.text();
+          const json = JSON.parse(raw);
+          const rawTasks = json.tasks || (Array.isArray(json) ? json : []);
+          items = rawTasks.map(t => ({
+            text: t.内容 || t.text || t,
+            level: t.强度 || t.level || null,
+            type: t.玩法类型 || t.type || '通用'
+          }));
+        } else if (name.endsWith('.txt')) {
+          const text = await file.text();
+          items = text.split(/\r?\n/).filter(t => t.trim()).map(t => ({ text: t, level: null, type: 'TXT' }));
+        } else if (name.endsWith('.docx')) {
+          const buffer = await file.arrayBuffer();
+          const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+          items = result.value.split(/\r?\n/).filter(t => t.trim()).map(t => ({ text: t, level: null, type: 'DOCX' }));
+        }
+
+        if (items.length > 0) {
+          for (const item of items) {
+            const res = await api.db.create("tasks_v2", { data: item });
+            allTasks.push({ id: res.id, ...item });
+          }
+          updateStats();
+          api.ui.toast(`成功导入 ${items.length} 条任务`);
+        }
+      } catch (err) {
+        api.ui.toast("导入失败: " + err.message);
+      }
+      e.target.value = '';
+    });
+
+    function generateTasks() {
+      if (allTasks.length === 0) return api.ui.toast("任务库为空");
+      const selected = [...allTasks].sort(() => 0.5 - Math.random()).slice(0, 12);
+      renderTasks(selected);
+    }
+
+    function renderTasks(tasks) {
+      const container = document.getElementById('taskList');
+      container.innerHTML = tasks.map((t, idx) => `
+        <div class="task-card">
+          ${t.level ? `<span class="intensity-tag">强度 ${t.level} · ${t.type}</span>` : ''}
+          <div class="task-content" id="t-${idx}">${t.text}</div>
+          <div class="task-actions">
+            <button class="btn btn-copy" onclick="copyText(${idx})">复制</button>
+            <button class="btn btn-ai" onclick="aiProcess(${idx})">AI 加工</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function copyText(idx) {
+      const text = document.getElementById(`t-${idx}`).innerText;
+      await navigator.clipboard.writeText(text);
+      api.ui.toast("已复制");
+    }
+
+    async function aiProcess(idx) {
+      const el = document.getElementById(`t-${idx}`);
+      const loader = document.getElementById('loading');
+      loader.style.display = 'flex';
+
+      try {
+        const chars = await api.characters.list();
+        const res = await api.ai.generate({
+          characterId: chars[0]?.id,
+          appTags: ["task_gen", "process"],
+          instruction: `请加工这个任务，使其更具戏剧性和细节感：\n"${el.innerText}"`
+        });
+        if (res.text) {
+          el.innerText = res.text;
+          api.ui.toast("加工完成");
+        }
+      } catch (e) {
+        api.ui.toast("加工失败");
+      } finally {
+        loader.style.display = 'none';
+      }
+    }
+
+    function toggleManageView(show) {
+      const view = document.getElementById('manageView');
+      view.style.display = show ? 'flex' : 'none';
+      if (show) renderManageList();
+    }
+
+    function renderManageList() {
+      const container = document.getElementById('manageList');
+      if (allTasks.length === 0) {
+        container.innerHTML = '<div class="stats">库里空空如也</div>';
+        return;
+      }
+      container.innerHTML = allTasks.map(t => `
+        <div class="manage-item">
+          <input type="checkbox" value="${t.id}">
+          <div class="manage-item-text">
+            ${t.level ? `<span style="color:#b91c1c; font-weight:bold;">[强${t.level}]</span> ` : ''}
+            ${t.text}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function selectAll(check) {
+      const cbs = document.querySelectorAll('#manageList input[type="checkbox"]');
+      cbs.forEach(cb => cb.checked = check);
+    }
+
+    async function deleteSelected() {
+      const checked = document.querySelectorAll('#manageList input[type="checkbox"]:checked');
+      if (checked.length === 0) return api.ui.toast("未选中任何任务");
+      
+      const confirm = await api.ui.confirm({ title: "删除确认", message: `确定要删除选中的 ${checked.length} 条任务吗？` });
+      if (!confirm) return;
+
+      const idsToDelete = Array.from(checked).map(cb => cb.value);
+      
+      document.getElementById('loading').style.display = 'flex';
+      try {
+        for (const id of idsToDelete) {
+          await api.db.delete("tasks_v2", id);
+        }
+        allTasks = allTasks.filter(t => !idsToDelete.includes(t.id));
+        updateStats();
+        renderManageList();
+        api.ui.toast(`成功删除 ${idsToDelete.length} 条任务`);
+      } catch (e) {
+        api.ui.toast("删除失败");
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+      }
+    }
+
+    function exportSelected(format) {
+      const checked = document.querySelectorAll('#manageList input[type="checkbox"]:checked');
+      if (checked.length === 0) return api.ui.toast("请先勾选要导出的任务");
+
+      const idsToExport = Array.from(checked).map(cb => cb.value);
+      const selectedTasks = allTasks.filter(t => idsToExport.includes(t.id));
+      
+      let content = "";
+      let fileName = `tasks_export_${new Date().getTime()}`;
+      let mimeType = "text/plain";
+
+      if (format === 'json') {
+        content = JSON.stringify({
+          tasks: selectedTasks.map(t => ({ 内容: t.text, 强度: t.level, 玩法类型: t.type }))
+        }, null, 2);
+        fileName += ".json";
+        mimeType = "application/json";
+      } else {
+        content = selectedTasks.map(t => t.text).join("\n");
+        fileName += ".txt";
+      }
+
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      api.ui.toast(`已导出 ${selectedTasks.length} 条任务`);
+    }
+
+    init();
+  </script>
+</body>
+</html>
